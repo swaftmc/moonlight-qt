@@ -1,4 +1,5 @@
 #include "session.h"
+#include "videorecorder.h"
 #include "settings/streamingpreferences.h"
 #include "streaming/streamutils.h"
 #include "backend/richpresencemanager.h"
@@ -141,38 +142,7 @@ void Session::clConnectionTerminated(int errorCode)
                  errorCode);
 
     // Finalize client-side recording.
-    if (s_ActiveSession != nullptr) {
-        std::string recordPath;
-        {
-            std::lock_guard<std::mutex> locker(s_ActiveSession->m_RecordMutex);
-            if (s_ActiveSession->m_RecordFile.is_open()) {
-                s_ActiveSession->m_RecordFile.close();
-            }
-            s_ActiveSession->m_RecordVideo = false;
-            recordPath = s_ActiveSession->m_RecordPath;
-        }
-        if (!recordPath.empty()) {
-            QString raw = QString::fromStdString(recordPath);
-            QString mp4 = raw;
-            if (mp4.endsWith(".h264")) {
-                mp4.chop(5);
-                mp4 += ".mp4";
-            } else {
-                mp4 += ".mp4";
-            }
-            QStringList args;
-            args << "-y" << "-f" << "h264" << "-i" << raw << "-c" << "copy" << mp4;
-            QStringList candidates;
-            candidates << "ffmpeg" << "C:/msys64/ucrt64/bin/ffmpeg.exe"
-                       << QCoreApplication::applicationDirPath() + "/ffmpeg.exe";
-            for (const QString &c : candidates) {
-                if (QProcess::startDetached(c, args)) {
-                    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Muxing client recording to %s", mp4.toUtf8().constData());
-                    break;
-                }
-            }
-        }
-    }
+    VideoRecorder::stop();
 
     // Push a quit event to the main loop
     SDL_Event event;
@@ -384,29 +354,10 @@ int Session::drSetup(int videoFormat, int width, int height, int frameRate, void
     s_ActiveSession->m_ActiveVideoHeight = height;
     s_ActiveSession->m_ActiveVideoFrameRate = frameRate;
 
-    // Open the client-side recording file (raw encoded bitstream as received).
+    // Start recording the encoded bitstream as received.
     if (s_ActiveSession != nullptr) {
-        std::lock_guard<std::mutex> locker(s_ActiveSession->m_RecordMutex);
-        if (s_ActiveSession->m_RecordFile.is_open()) {
-            s_ActiveSession->m_RecordFile.close();
-        }
-        QString path = qgetenv("MOONLIGHT_RECORD_PATH");
-        if (path.isEmpty()) {
-            QDir outputDir(QCoreApplication::applicationDirPath() + "/output");
-            outputDir.mkpath(".");
-            path = outputDir.filePath("client_received.h264");
-        } else {
-            QDir(QFileInfo(path).absolutePath()).mkpath(".");
-        }
-        s_ActiveSession->m_RecordPath = path.toStdString();
-        s_ActiveSession->m_RecordFile.open(path.toStdString(), std::ios::binary | std::ios::trunc);
-        if (s_ActiveSession->m_RecordFile.is_open()) {
-            s_ActiveSession->m_RecordVideo = true;
-            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Recording client video to %s", path.toUtf8().constData());
-        } else {
-            s_ActiveSession->m_RecordVideo = false;
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Failed to open client recording file: %s", path.toUtf8().constData());
-        }
+        QString recordPath = qgetenv("MOONLIGHT_RECORD_PATH");
+        VideoRecorder::start(recordPath, videoFormat);
     }
 
     // Defer decoder setup until we've started streaming so we
@@ -422,16 +373,7 @@ int Session::drSetup(int videoFormat, int width, int height, int frameRate, void
 int Session::drSubmitDecodeUnit(PDECODE_UNIT du)
 {
     // Record the encoded bitstream as received (before decode).
-    if (du != nullptr && s_ActiveSession != nullptr) {
-        std::lock_guard<std::mutex> locker(s_ActiveSession->m_RecordMutex);
-        if (s_ActiveSession->m_RecordVideo && s_ActiveSession->m_RecordFile.is_open()) {
-            for (PLENTRY entry = du->bufferList; entry != nullptr; entry = entry->next) {
-                if (entry->data != nullptr && entry->length > 0) {
-                    s_ActiveSession->m_RecordFile.write(reinterpret_cast<const char*>(entry->data), entry->length);
-                }
-            }
-        }
-    }
+    VideoRecorder::write(du);
     // Use a lock since we'll be yanking this decoder out
     // from underneath the session when we initiate destruction.
     // We need to destroy the decoder on the main thread to satisfy
@@ -652,7 +594,6 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_MouseEmulationRefCount(0),
       m_FlushingWindowEventsRef(0),
       m_ShouldExit(false),
-      m_RecordVideo(false),
       m_AsyncConnectionSuccess(false),
       m_PortTestResults(0),
       m_OpusDecoder(nullptr),
@@ -2461,13 +2402,7 @@ DispatchDeferredCleanup:
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
 
     // Finalize client-side recording if it hasn't been closed yet.
-    {
-        std::lock_guard<std::mutex> locker(m_RecordMutex);
-        if (m_RecordFile.is_open()) {
-            m_RecordFile.close();
-        }
-        m_RecordVideo = false;
-    }
+    VideoRecorder::stop();
 
     // Cleanup can take a while, so dispatch it to a worker thread.
     // When it is complete, it will release our s_ActiveSessionSemaphore
