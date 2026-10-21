@@ -129,6 +129,8 @@ void Path::initialize(bool portable)
     // Allow overriding the log directory via environment variable.
     QString envLogDir = qgetenv("MOONLIGHT_LOG_DIR");
     if (!envLogDir.isEmpty()) {
+        envLogDir = QDir::toNativeSeparators(envLogDir);
+        QDir(envLogDir).mkpath(".");
         s_LogDir = envLogDir;
     }
 }

@@ -140,8 +140,8 @@ void Session::clConnectionTerminated(int errorCode)
 
     // Finalize client-side recording.
     if (s_ActiveSession != nullptr) {
-        QMutexLocker locker(&s_ActiveSession->m_RecordMutex);
-        if (s_ActiveSession->m_RecordFile.isOpen()) {
+        std::lock_guard<std::mutex> locker(s_ActiveSession->m_RecordMutex);
+        if (s_ActiveSession->m_RecordFile.is_open()) {
             s_ActiveSession->m_RecordFile.close();
         }
         s_ActiveSession->m_RecordVideo = false;
@@ -358,14 +358,17 @@ int Session::drSetup(int videoFormat, int width, int height, int frameRate, void
     s_ActiveSession->m_ActiveVideoFrameRate = frameRate;
 
     // Open the client-side recording file (raw encoded bitstream as received).
-    {
-        QMutexLocker locker(&s_ActiveSession->m_RecordMutex);
+    if (s_ActiveSession != nullptr) {
+        std::lock_guard<std::mutex> locker(s_ActiveSession->m_RecordMutex);
+        if (s_ActiveSession->m_RecordFile.is_open()) {
+            s_ActiveSession->m_RecordFile.close();
+        }
         QString path = qgetenv("MOONLIGHT_RECORD_PATH");
         if (path.isEmpty()) {
             path = "client_received.h264";
         }
-        s_ActiveSession->m_RecordFile.setFileName(path);
-        if (s_ActiveSession->m_RecordFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        s_ActiveSession->m_RecordFile.open(path.toStdString(), std::ios::binary | std::ios::trunc);
+        if (s_ActiveSession->m_RecordFile.is_open()) {
             s_ActiveSession->m_RecordVideo = true;
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Recording client video to %s", path.toUtf8().constData());
         } else {
@@ -388,8 +391,8 @@ int Session::drSubmitDecodeUnit(PDECODE_UNIT du)
 {
     // Record the encoded bitstream as received (before decode).
     if (du != nullptr && s_ActiveSession != nullptr) {
-        QMutexLocker locker(&s_ActiveSession->m_RecordMutex);
-        if (s_ActiveSession->m_RecordVideo && s_ActiveSession->m_RecordFile.isOpen()) {
+        std::lock_guard<std::mutex> locker(s_ActiveSession->m_RecordMutex);
+        if (s_ActiveSession->m_RecordVideo && s_ActiveSession->m_RecordFile.is_open()) {
             for (PLENTRY entry = du->bufferList; entry != nullptr; entry = entry->next) {
                 if (entry->data != nullptr && entry->length > 0) {
                     s_ActiveSession->m_RecordFile.write(reinterpret_cast<const char*>(entry->data), entry->length);
@@ -2424,6 +2427,15 @@ DispatchDeferredCleanup:
     }
 
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
+
+    // Finalize client-side recording if it hasn't been closed yet.
+    {
+        std::lock_guard<std::mutex> locker(m_RecordMutex);
+        if (m_RecordFile.is_open()) {
+            m_RecordFile.close();
+        }
+        m_RecordVideo = false;
+    }
 
     // Cleanup can take a while, so dispatch it to a worker thread.
     // When it is complete, it will release our s_ActiveSessionSemaphore
