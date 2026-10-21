@@ -7,3 +7,20 @@ build/
 libs/
 config.tests/*/.qmake.stash
 config.tests/*/Makefile
+
+# qmake/MSVC build artifacts
+.qmake.cache
+.qmake.stash
+Makefile
+Makefile.Debug
+Makefile.Release
+*.o
+*.obj
+*.pdb
+*.ilk
+*.exe
+*.res
+*.rc
+qml_qmlcache.qrc
+release/
+debug/

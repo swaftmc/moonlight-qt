@@ -36,7 +36,6 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
-#include <QProcess>
 #include <QThreadPool>
 #include <QSvgRenderer>
 #include <QPainter>
@@ -1802,20 +1801,6 @@ void Session::exec()
         QThreadPool::globalInstance()->start(new DeferredSessionCleanupTask(this));
         return;
     }
-
-#ifdef Q_OS_WIN32
-    // Optional AutoHotkey integration: launch a script when MOONLIGHT_AHK_SCRIPT is set.
-    {
-        QString ahkScript = qgetenv("MOONLIGHT_AHK_SCRIPT");
-        if (!ahkScript.isEmpty()) {
-            QString ahkExe = qgetenv("MOONLIGHT_AHK_EXE");
-            if (ahkExe.isEmpty()) {
-                ahkExe = "AutoHotkey.exe";
-            }
-            QProcess::startDetached(ahkExe, QStringList() << ahkScript);
-        }
-    }
-#endif
 
     // Pump the Qt event loop one last time before we create our SDL window
     // This is sometimes necessary for the QML code to process any signals
