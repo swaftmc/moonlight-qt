@@ -33,6 +33,8 @@
 
 #include <QtEndian>
 #include <QCoreApplication>
+#include <QDir>
+#include <QFileInfo>
 #include <QProcess>
 #include <QThreadPool>
 #include <QSvgRenderer>
@@ -140,11 +142,36 @@ void Session::clConnectionTerminated(int errorCode)
 
     // Finalize client-side recording.
     if (s_ActiveSession != nullptr) {
-        std::lock_guard<std::mutex> locker(s_ActiveSession->m_RecordMutex);
-        if (s_ActiveSession->m_RecordFile.is_open()) {
-            s_ActiveSession->m_RecordFile.close();
+        std::string recordPath;
+        {
+            std::lock_guard<std::mutex> locker(s_ActiveSession->m_RecordMutex);
+            if (s_ActiveSession->m_RecordFile.is_open()) {
+                s_ActiveSession->m_RecordFile.close();
+            }
+            s_ActiveSession->m_RecordVideo = false;
+            recordPath = s_ActiveSession->m_RecordPath;
         }
-        s_ActiveSession->m_RecordVideo = false;
+        if (!recordPath.empty()) {
+            QString raw = QString::fromStdString(recordPath);
+            QString mp4 = raw;
+            if (mp4.endsWith(".h264")) {
+                mp4.chop(5);
+                mp4 += ".mp4";
+            } else {
+                mp4 += ".mp4";
+            }
+            QStringList args;
+            args << "-y" << "-f" << "h264" << "-i" << raw << "-c" << "copy" << mp4;
+            QStringList candidates;
+            candidates << "ffmpeg" << "C:/msys64/ucrt64/bin/ffmpeg.exe"
+                       << QCoreApplication::applicationDirPath() + "/ffmpeg.exe";
+            for (const QString &c : candidates) {
+                if (QProcess::startDetached(c, args)) {
+                    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Muxing client recording to %s", mp4.toUtf8().constData());
+                    break;
+                }
+            }
+        }
     }
 
     // Push a quit event to the main loop
@@ -365,8 +392,13 @@ int Session::drSetup(int videoFormat, int width, int height, int frameRate, void
         }
         QString path = qgetenv("MOONLIGHT_RECORD_PATH");
         if (path.isEmpty()) {
-            path = "client_received.h264";
+            QDir outputDir(QCoreApplication::applicationDirPath() + "/output");
+            outputDir.mkpath(".");
+            path = outputDir.filePath("client_received.h264");
+        } else {
+            QDir(QFileInfo(path).absolutePath()).mkpath(".");
         }
+        s_ActiveSession->m_RecordPath = path.toStdString();
         s_ActiveSession->m_RecordFile.open(path.toStdString(), std::ios::binary | std::ios::trunc);
         if (s_ActiveSession->m_RecordFile.is_open()) {
             s_ActiveSession->m_RecordVideo = true;
