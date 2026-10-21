@@ -2,6 +2,7 @@
 #include "ffmpeg.h"
 #include "utils.h"
 #include "streaming/session.h"
+#include "streaming/videorecorder.h"
 
 #include <h264_stream.h>
 
@@ -2097,6 +2098,10 @@ int FFmpegVideoDecoder::submitDecodeUnit(PDECODE_UNIT du)
 {
     PLENTRY entry = du->bufferList;
     int err;
+
+    // Record the encoded bitstream as received (before decode). This decoder pulls
+    // frames itself, so the session level decode unit callback is never invoked.
+    VideoRecorder::write(du);
 
     SDL_assert(m_CurrentTestMode != TestMode::TestFrameOnly);
 

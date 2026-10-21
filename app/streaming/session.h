@@ -269,12 +269,6 @@ private:
     QStringList m_LaunchWarnings;
     bool m_ShouldExit;
 
-    // Dual-side recording (raw encoded bitstream as received)
-    bool m_RecordVideo;
-    std::string m_RecordPath;
-    std::ofstream m_RecordFile;
-    std::mutex m_RecordMutex;
-
     bool m_AsyncConnectionSuccess;
     int m_PortTestResults;
 
