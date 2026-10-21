@@ -33,6 +33,7 @@
 
 #include <QtEndian>
 #include <QCoreApplication>
+#include <QProcess>
 #include <QThreadPool>
 #include <QSvgRenderer>
 #include <QPainter>
@@ -136,6 +137,15 @@ void Session::clConnectionTerminated(int errorCode)
     SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                  "Connection terminated: %d",
                  errorCode);
+
+    // Finalize client-side recording.
+    if (s_ActiveSession != nullptr) {
+        QMutexLocker locker(&s_ActiveSession->m_RecordMutex);
+        if (s_ActiveSession->m_RecordFile.isOpen()) {
+            s_ActiveSession->m_RecordFile.close();
+        }
+        s_ActiveSession->m_RecordVideo = false;
+    }
 
     // Push a quit event to the main loop
     SDL_Event event;
@@ -347,6 +357,23 @@ int Session::drSetup(int videoFormat, int width, int height, int frameRate, void
     s_ActiveSession->m_ActiveVideoHeight = height;
     s_ActiveSession->m_ActiveVideoFrameRate = frameRate;
 
+    // Open the client-side recording file (raw encoded bitstream as received).
+    {
+        QMutexLocker locker(&s_ActiveSession->m_RecordMutex);
+        QString path = qgetenv("MOONLIGHT_RECORD_PATH");
+        if (path.isEmpty()) {
+            path = "client_received.h264";
+        }
+        s_ActiveSession->m_RecordFile.setFileName(path);
+        if (s_ActiveSession->m_RecordFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            s_ActiveSession->m_RecordVideo = true;
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Recording client video to %s", path.toUtf8().constData());
+        } else {
+            s_ActiveSession->m_RecordVideo = false;
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Failed to open client recording file: %s", path.toUtf8().constData());
+        }
+    }
+
     // Defer decoder setup until we've started streaming so we
     // don't have to hide and show the SDL window (which seems to
     // cause pointer hiding to break on Windows).
@@ -359,6 +386,17 @@ int Session::drSetup(int videoFormat, int width, int height, int frameRate, void
 
 int Session::drSubmitDecodeUnit(PDECODE_UNIT du)
 {
+    // Record the encoded bitstream as received (before decode).
+    if (du != nullptr && s_ActiveSession != nullptr) {
+        QMutexLocker locker(&s_ActiveSession->m_RecordMutex);
+        if (s_ActiveSession->m_RecordVideo && s_ActiveSession->m_RecordFile.isOpen()) {
+            for (PLENTRY entry = du->bufferList; entry != nullptr; entry = entry->next) {
+                if (entry->data != nullptr && entry->length > 0) {
+                    s_ActiveSession->m_RecordFile.write(reinterpret_cast<const char*>(entry->data), entry->length);
+                }
+            }
+        }
+    }
     // Use a lock since we'll be yanking this decoder out
     // from underneath the session when we initiate destruction.
     // We need to destroy the decoder on the main thread to satisfy
@@ -579,6 +617,7 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_MouseEmulationRefCount(0),
       m_FlushingWindowEventsRef(0),
       m_ShouldExit(false),
+      m_RecordVideo(false),
       m_AsyncConnectionSuccess(false),
       m_PortTestResults(0),
       m_OpusDecoder(nullptr),
@@ -1787,6 +1826,20 @@ void Session::exec()
         QThreadPool::globalInstance()->start(new DeferredSessionCleanupTask(this));
         return;
     }
+
+#ifdef Q_OS_WIN32
+    // Optional AutoHotkey integration: launch a script when MOONLIGHT_AHK_SCRIPT is set.
+    {
+        QString ahkScript = qgetenv("MOONLIGHT_AHK_SCRIPT");
+        if (!ahkScript.isEmpty()) {
+            QString ahkExe = qgetenv("MOONLIGHT_AHK_EXE");
+            if (ahkExe.isEmpty()) {
+                ahkExe = "AutoHotkey.exe";
+            }
+            QProcess::startDetached(ahkExe, QStringList() << ahkScript);
+        }
+    }
+#endif
 
     // Pump the Qt event loop one last time before we create our SDL window
     // This is sometimes necessary for the QML code to process any signals

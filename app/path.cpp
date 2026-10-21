@@ -125,4 +125,10 @@ void Path::initialize(bool portable)
         s_BoxArtCacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/boxart";
         s_QmlCacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/qmlcache";
     }
+
+    // Allow overriding the log directory via environment variable.
+    QString envLogDir = qgetenv("MOONLIGHT_LOG_DIR");
+    if (!envLogDir.isEmpty()) {
+        s_LogDir = envLogDir;
+    }
 }
