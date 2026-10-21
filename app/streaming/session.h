@@ -4,6 +4,8 @@
 #include <QQuickWindow>
 #include <QFile>
 #include <QMutex>
+#include <fstream>
+#include <mutex>
 
 #include <Limelight.h>
 #include <opus_multistream.h>
@@ -269,8 +271,8 @@ private:
 
     // Dual-side recording (raw encoded bitstream as received)
     bool m_RecordVideo;
-    QFile m_RecordFile;
-    QMutex m_RecordMutex;
+    std::ofstream m_RecordFile;
+    std::mutex m_RecordMutex;
 
     bool m_AsyncConnectionSuccess;
     int m_PortTestResults;
