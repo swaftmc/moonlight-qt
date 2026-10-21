@@ -2,6 +2,8 @@
 
 #include <QSemaphore>
 #include <QQuickWindow>
+#include <QFile>
+#include <QMutex>
 
 #include <Limelight.h>
 #include <opus_multistream.h>
@@ -264,6 +266,11 @@ private:
     int m_FlushingWindowEventsRef;
     QStringList m_LaunchWarnings;
     bool m_ShouldExit;
+
+    // Dual-side recording (raw encoded bitstream as received)
+    bool m_RecordVideo;
+    QFile m_RecordFile;
+    QMutex m_RecordMutex;
 
     bool m_AsyncConnectionSuccess;
     int m_PortTestResults;

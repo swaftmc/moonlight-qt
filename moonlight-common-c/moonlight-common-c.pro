@@ -28,6 +28,10 @@ win32 {
 
     INCLUDEPATH += $$PWD/../libs/windows/include
     DEFINES += HAS_QOS_FLOWID=1 HAS_PQOS_FLOWID=1
+
+    # OpenSSL (Windows)
+    INCLUDEPATH += "C:/Program Files/OpenSSL-Win64/include"
+    LIBS += -L"C:/Program Files/OpenSSL-Win64/lib/VC/x64/MD" -llibcrypto -llibssl
 }
 macx {
     INCLUDEPATH += $$PWD/../libs/mac/include
