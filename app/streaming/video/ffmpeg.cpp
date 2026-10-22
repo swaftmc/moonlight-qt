@@ -495,6 +495,9 @@ bool FFmpegVideoDecoder::completeInitialization(const AVCodec* decoder, enum AVP
     m_VideoFormat = params->videoFormat;
     m_CurrentTestMode = testMode;
 
+    // Start recording the encoded bitstream as received (pull-renderer mode).
+    VideoRecorder::start(QString(), params->videoFormat);
+
     // Don't bother initializing Pacer if we're not actually going to render
     if (testMode != TestMode::TestFrameOnly) {
         m_Pacer = new Pacer(m_FrontendRenderer, &m_ActiveWndVideoStats);

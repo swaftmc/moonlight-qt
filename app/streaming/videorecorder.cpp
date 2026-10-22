@@ -10,6 +10,7 @@
 #include <QProcess>
 #include <SDL.h>
 
+#include <cstdlib>
 #include <fstream>
 #include <mutex>
 #include <string>
@@ -98,6 +99,20 @@ QString detect_codec(const QString &path)
     return QString();
 }
 
+/**
+ * @brief Resolve the path of the stream-connected flag file.
+ *
+ * @return Absolute path of the flag file.
+ */
+QString stream_flag_path()
+{
+    const char *env = std::getenv("MOONLIGHT_STREAM_FLAG");
+    if (env != nullptr && env[0] != '\0') {
+        return QString::fromUtf8(env);
+    }
+    return QCoreApplication::applicationDirPath() + "/output/stream_connected.flag";
+}
+
 }  // namespace
 
 bool VideoRecorder::start(const QString &path, int videoFormat)
@@ -131,7 +146,7 @@ bool VideoRecorder::start(const QString &path, int videoFormat)
       codecFile.close();
     }
     // Signal external tools (e.g. the AHK plugin) that a stream has connected.
-    QFile flagFile(QCoreApplication::applicationDirPath() + "/output/stream_connected.flag");
+    QFile flagFile(stream_flag_path());
     if (flagFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
       flagFile.close();
     }
@@ -189,7 +204,7 @@ void VideoRecorder::stop()
   g_record_path.clear();
 
   // Remove the connection flag so external tools know the stream ended.
-  QFile(QCoreApplication::applicationDirPath() + "/output/stream_connected.flag").remove();
+  QFile(stream_flag_path()).remove();
   }
 
   if (recordPath.empty() || !started) {
@@ -228,7 +243,7 @@ bool VideoRecorder::isActive()
 void VideoRecorder::muxPending()
 {
     // A stale flag from a previous run should never be treated as "connected".
-    QFile(QCoreApplication::applicationDirPath() + "/output/stream_connected.flag").remove();
+    QFile(stream_flag_path()).remove();
 
     QString raw = qgetenv("MOONLIGHT_RECORD_PATH");
   if (raw.isEmpty()) {
