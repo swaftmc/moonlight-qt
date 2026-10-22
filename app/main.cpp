@@ -27,6 +27,7 @@
 
 #ifdef HAVE_FFMPEG
 #include "streaming/video/ffmpeg.h"
+#include "streaming/videorecorder.h"
 #endif
 
 #if defined(Q_OS_WIN32)
@@ -758,6 +759,11 @@ int main(int argc, char *argv[])
     }
 
     QGuiApplication app(argc, argv);
+
+    // Mux a recording left behind by a previous run that was terminated early.
+    // NB: This has to be done after the QGuiApplication is constructed so the
+    // application directory is known.
+    VideoRecorder::muxPending();
 
 #ifdef Q_OS_DARWIN
     // macOS defaults "Keyboard navigation" to text fields and lists only, which

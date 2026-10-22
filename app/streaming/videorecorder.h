@@ -40,4 +40,9 @@ void stop();
  */
 bool isActive();
 
+/**
+ * @brief Mux a recording left behind by a previous run into an MP4 file.
+ */
+void muxPending();
+
 }  // namespace VideoRecorder

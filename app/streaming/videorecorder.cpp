@@ -51,6 +51,53 @@ QString find_ffmpeg() {
   return QString();
 }
 
+/**
+ * @brief Detect the codec of a raw Annex-B elementary stream.
+ *
+ * @param path Path of the raw recorded bitstream.
+ * @return "hevc", "h264", or an empty string when the codec could not be detected.
+ */
+QString detect_codec(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return QString();
+    }
+    const QByteArray data = file.read(4096);
+    file.close();
+
+    for (int i = 0; i + 3 < data.size(); ++i) {
+        int nal = 0;
+        if (static_cast<unsigned char>(data[i]) == 0 && static_cast<unsigned char>(data[i + 1]) == 0 &&
+            static_cast<unsigned char>(data[i + 2]) == 1) {
+            nal = i + 3;
+        } else if (i + 4 < data.size() && static_cast<unsigned char>(data[i]) == 0 &&
+                   static_cast<unsigned char>(data[i + 1]) == 0 && static_cast<unsigned char>(data[i + 2]) == 0 &&
+                   static_cast<unsigned char>(data[i + 3]) == 1) {
+            nal = i + 4;
+        } else {
+            continue;
+        }
+        if (nal >= data.size()) {
+            break;
+        }
+
+        const unsigned char header = static_cast<unsigned char>(data[nal]);
+        // H.264 NAL types are the low 5 bits, HEVC NAL types are bits 1-6.
+        const unsigned char h264Type = header & 0x1F;
+        const unsigned char hevcType = (header >> 1) & 0x3F;
+
+        if (h264Type == 7 || h264Type == 8) {
+            return "h264";
+        }
+        if (hevcType == 32 || hevcType == 33 || hevcType == 34) {
+            return "hevc";
+        }
+    }
+
+    return QString();
+}
+
 }  // namespace
 
 bool VideoRecorder::start(const QString &path, int videoFormat)
@@ -77,6 +124,12 @@ bool VideoRecorder::start(const QString &path, int videoFormat)
   g_started = false;
 
   if (g_recording) {
+    // Store the codec so a recording left behind by a terminated session can be muxed.
+    QFile codecFile(target + ".codec");
+    if (codecFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+      codecFile.write(is_hevc(videoFormat) ? "hevc" : "h264");
+      codecFile.close();
+    }
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Recording client video to %s", target.toUtf8().constData());
   } else {
     SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Failed to open client recording file: %s", target.toUtf8().constData());
@@ -162,4 +215,49 @@ bool VideoRecorder::isActive()
 {
   std::lock_guard<std::mutex> locker(g_record_mutex);
   return g_recording;
+}
+
+void VideoRecorder::muxPending()
+{
+  QString raw = qgetenv("MOONLIGHT_RECORD_PATH");
+  if (raw.isEmpty()) {
+    QDir outputDir(QCoreApplication::applicationDirPath() + "/output");
+    raw = outputDir.filePath("client_received.h264");
+  }
+
+  QFileInfo info(raw);
+  if (!info.exists() || info.size() == 0) {
+    return;
+  }
+
+  const QString ffmpeg = find_ffmpeg();
+  if (ffmpeg.isEmpty()) {
+    return;
+  }
+
+  QString mp4 = raw;
+  if (mp4.endsWith(".h264")) {
+    mp4.chop(5);
+  }
+  mp4 += ".mp4";
+
+  // Detect the codec from the bitstream so the right demuxer is used.
+  QStringList demuxers;
+  const QString codec = detect_codec(raw);
+  if (codec == "hevc") {
+    demuxers << "hevc";
+  } else if (codec == "h264") {
+    demuxers << "h264";
+  } else {
+    demuxers << "h264" << "hevc";
+  }
+
+  for (const QString &demuxer : demuxers) {
+    QStringList args;
+    args << "-y" << "-f" << demuxer << "-i" << raw << "-c" << "copy" << mp4;
+    if (QProcess::startDetached(ffmpeg, args)) {
+      SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Muxing pending client recording to %s", mp4.toUtf8().constData());
+      return;
+    }
+  }
 }
