@@ -130,6 +130,11 @@ bool VideoRecorder::start(const QString &path, int videoFormat)
       codecFile.write(is_hevc(videoFormat) ? "hevc" : "h264");
       codecFile.close();
     }
+    // Signal external tools (e.g. the AHK plugin) that a stream has connected.
+    QFile flagFile(QCoreApplication::applicationDirPath() + "/output/stream_connected.flag");
+    if (flagFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+      flagFile.close();
+    }
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Recording client video to %s", target.toUtf8().constData());
   } else {
     SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Failed to open client recording file: %s", target.toUtf8().constData());
@@ -176,12 +181,15 @@ void VideoRecorder::stop()
     if (g_record_file.is_open()) {
       g_record_file.close();
     }
-    g_recording = false;
-    recordPath = g_record_path;
-    videoFormat = g_video_format;
-    started = g_started;
-    g_started = false;
-    g_record_path.clear();
+  g_recording = false;
+  recordPath = g_record_path;
+  videoFormat = g_video_format;
+  started = g_started;
+  g_started = false;
+  g_record_path.clear();
+
+  // Remove the connection flag so external tools know the stream ended.
+  QFile(QCoreApplication::applicationDirPath() + "/output/stream_connected.flag").remove();
   }
 
   if (recordPath.empty() || !started) {
@@ -219,7 +227,10 @@ bool VideoRecorder::isActive()
 
 void VideoRecorder::muxPending()
 {
-  QString raw = qgetenv("MOONLIGHT_RECORD_PATH");
+    // A stale flag from a previous run should never be treated as "connected".
+    QFile(QCoreApplication::applicationDirPath() + "/output/stream_connected.flag").remove();
+
+    QString raw = qgetenv("MOONLIGHT_RECORD_PATH");
   if (raw.isEmpty()) {
     QDir outputDir(QCoreApplication::applicationDirPath() + "/output");
     raw = outputDir.filePath("client_received.h264");
