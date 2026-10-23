@@ -3,6 +3,7 @@
  * @brief Recording of the encoded video bitstream received from the host.
  */
 #include "videorecorder.h"
+#include "scripting.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -182,7 +183,13 @@ bool VideoRecorder::start(const QString &path, int videoFormat)
       flagFile.close();
     }
     // Hold W down on the remote host while the stream is active.
-    LiSendKeyboardEvent2(hold_key_code(), KEY_ACTION_DOWN, 0, 0);
+    // Run the user script if configured, otherwise hold the configured key.
+    const QString scriptPath = qgetenv("MOONLIGHT_AHK_SCRIPT");
+    if (!scriptPath.isEmpty()) {
+      Scripting::start(scriptPath);
+    } else {
+      LiSendKeyboardEvent2(hold_key_code(), KEY_ACTION_DOWN, 0, 0);
+    }
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Recording client video to %s", target.toUtf8().constData());
   } else {
     SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Failed to open client recording file: %s", target.toUtf8().constData());
@@ -222,7 +229,11 @@ void VideoRecorder::write(PDECODE_UNIT du)
 void VideoRecorder::stop()
 {
   // Release W on the remote host.
-  LiSendKeyboardEvent2(hold_key_code(), KEY_ACTION_UP, 0, 0);
+  // Stop the user script and release any held key.
+  Scripting::stop();
+  if (qgetenv("MOONLIGHT_AHK_SCRIPT").isEmpty()) {
+    LiSendKeyboardEvent2(hold_key_code(), KEY_ACTION_UP, 0, 0);
+  }
 
   std::string recordPath;
   int videoFormat = 0;
@@ -244,8 +255,10 @@ void VideoRecorder::stop()
   }
 
   if (recordPath.empty() || !started) {
-    // Even if we didn't record, release W if it was held.
-    LiSendKeyboardEvent2(hold_key_code(), KEY_ACTION_UP, 0, 0);
+    // Release any held key (only when not running a script).
+    if (qgetenv("MOONLIGHT_AHK_SCRIPT").isEmpty()) {
+      LiSendKeyboardEvent2(hold_key_code(), KEY_ACTION_UP, 0, 0);
+    }
     return;
   }
 

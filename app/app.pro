@@ -192,6 +192,7 @@ SOURCES += \
     streaming/input/mouse.cpp \
     streaming/input/reltouch.cpp \
     streaming/session.cpp \
+    streaming/scripting.cpp \
     streaming/videorecorder.cpp \
     streaming/audio/audio.cpp \
     streaming/audio/renderers/sdlaud.cpp \
@@ -230,6 +231,7 @@ HEADERS += \
     settings/streamingpreferences.h \
     streaming/input/input.h \
     streaming/session.h \
+    streaming/scripting.h \
     streaming/videorecorder.h \
     streaming/audio/renderers/renderer.h \
     streaming/audio/renderers/sdl.h \
