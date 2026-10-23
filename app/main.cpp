@@ -435,10 +435,10 @@ int main(int argc, char *argv[])
     QCoreApplication::setOrganizationDomain("moonlight-stream.com");
     QCoreApplication::setApplicationName("Moonlight");
 
-    if (QFile(QDir::currentPath() + "/portable.dat").exists()) {
+    if (QFile(QCoreApplication::applicationDirPath() + "/portable.dat").exists()) {
         QSettings::setDefaultFormat(QSettings::IniFormat);
-        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, QDir::currentPath());
-        QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, QDir::currentPath());
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, QCoreApplication::applicationDirPath());
+        QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, QCoreApplication::applicationDirPath());
 
         // Initialize paths for portable mode
         Path::initialize(true);
