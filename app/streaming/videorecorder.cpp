@@ -57,6 +57,13 @@ unsigned short hold_key_code() {
   }
 }
 
+/**
+ * @brief Check whether the negotiated video format is an HEVC (H.265) stream.
+ *
+ * @param video_format Negotiated video format.
+ * @return True for HEVC formats.
+ */
+bool is_hevc(int video_format) {
   return (video_format & 0x0100) != 0;
 }
 
