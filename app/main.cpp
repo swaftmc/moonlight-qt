@@ -5,6 +5,7 @@
 #include <QIcon>
 #include <QQuickStyle>
 #include <QMutex>
+#include <cstdio>
 #include <QtDebug>
 #include <QNetworkProxyFactory>
 #include <QPalette>
