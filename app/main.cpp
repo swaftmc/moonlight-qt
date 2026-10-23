@@ -435,18 +435,19 @@ int main(int argc, char *argv[])
     QCoreApplication::setOrganizationDomain("moonlight-stream.com");
     QCoreApplication::setApplicationName("Moonlight");
 
-    if (QFile(QCoreApplication::applicationDirPath() + "/portable.dat").exists()) {
-        QSettings::setDefaultFormat(QSettings::IniFormat);
-        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, QCoreApplication::applicationDirPath());
-        QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, QCoreApplication::applicationDirPath());
-
-        // Initialize paths for portable mode
-        Path::initialize(true);
-    }
-    else {
-        // Initialize paths for standard installation
-        Path::initialize(false);
-    }
+    // Portable mode: store settings next to the executable so the build is self-contained.
+    QString appDir;
+#ifdef Q_OS_WIN32
+    wchar_t exePath[MAX_PATH];
+    GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+    appDir = QFileInfo(QString::fromWCharArray(exePath)).absolutePath();
+#else
+    appDir = QDir::currentPath();
+#endif
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, appDir);
+    QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, appDir);
+    Path::initialize(true);
 
     // Override the default QML cache directory with the one we chose
     if (qEnvironmentVariableIsEmpty("QML_DISK_CACHE_PATH")) {
