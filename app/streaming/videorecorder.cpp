@@ -25,6 +25,37 @@ bool g_recording = false;
 bool g_started = false;
 
 /**
+ * @brief Resolve the virtual key code of the key held while a stream is active.
+ *
+ * @return Virtual key code (VK_*) of the configured key, defaulting to W.
+ */
+unsigned short hold_key_code() {
+  const char *env = std::getenv("MOONLIGHT_HOLD_KEY");
+  char key = 'w';
+  if (env != nullptr && env[0] != '\0') {
+    key = static_cast<char>(std::tolower(static_cast<unsigned char>(env[0])));
+  }
+
+  if (key >= 'a' && key <= 'z') {
+    return static_cast<unsigned short>(0x41 + (key - 'a'));
+  }
+  if (key >= '0' && key <= '9') {
+    return static_cast<unsigned short>(0x30 + (key - '0'));
+  }
+  switch (key) {
+    case ' ':
+      return 0x20;
+    case '\r':
+    case '\n':
+      return 0x0D;
+    case '\t':
+      return 0x09;
+    default:
+      return 0x57;  // VK_W
+  }
+}
+
+/**
  * @brief Check whether the negotiated video format is an HEVC (H.265) stream.
  *
  * @param video_format Negotiated video format.
@@ -150,6 +181,8 @@ bool VideoRecorder::start(const QString &path, int videoFormat)
     if (flagFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
       flagFile.close();
     }
+    // Hold W down on the remote host while the stream is active.
+    LiSendKeyboardEvent2(hold_key_code(), KEY_ACTION_DOWN, 0, 0);
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Recording client video to %s", target.toUtf8().constData());
   } else {
     SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Failed to open client recording file: %s", target.toUtf8().constData());
@@ -188,6 +221,9 @@ void VideoRecorder::write(PDECODE_UNIT du)
 
 void VideoRecorder::stop()
 {
+  // Release W on the remote host.
+  LiSendKeyboardEvent2(hold_key_code(), KEY_ACTION_UP, 0, 0);
+
   std::string recordPath;
   int videoFormat = 0;
   bool started = false;
@@ -208,6 +244,8 @@ void VideoRecorder::stop()
   }
 
   if (recordPath.empty() || !started) {
+    // Even if we didn't record, release W if it was held.
+    LiSendKeyboardEvent2(hold_key_code(), KEY_ACTION_UP, 0, 0);
     return;
   }
 
