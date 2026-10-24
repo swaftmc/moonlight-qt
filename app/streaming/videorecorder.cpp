@@ -11,10 +11,14 @@
 #include <QProcess>
 #include <SDL.h>
 
-#include <cstdlib>
+#include "Limelight.h"
+
+#include <atomic>
+#include <chrono>
 #include <fstream>
 #include <mutex>
 #include <string>
+#include <thread>
 
 namespace {
 
@@ -24,6 +28,9 @@ std::string g_record_path;
 int g_video_format = 0;
 bool g_recording = false;
 bool g_started = false;
+bool g_hold_key_sent = false;
+std::thread g_hold_key_thread;
+std::atomic<bool> g_stop_hold {false};
 
 /**
  * @brief Resolve the virtual key code of the key held while a stream is active.
