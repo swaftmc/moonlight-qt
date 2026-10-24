@@ -22,6 +22,11 @@ namespace VideoRecorder {
 bool start(const QString &path = QString(), int videoFormat = 0);
 
 /**
+ * @brief Release any key held by a previous recording session.
+ */
+void releaseHoldKey();
+
+/**
  * @brief Append an encoded decode unit to the recording.
  *
  * @param du Decode unit received from the host. May be null.
